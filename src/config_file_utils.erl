@@ -19,6 +19,7 @@ collect_required_values(_, {error, EL}) -> {error, EL};
 collect_required_values({ok, PFunc, Val}, State) -> 
 	case catch(PFunc(State, Val)) of
 	  {error, ER} -> {error, [{config_func_failed, ER}]};
+	  {'EXIT', ER} -> {error, [{config_func_failed, ER}]};
           A -> A		
         end.
 
@@ -33,6 +34,21 @@ require_values(App, KeySpecs, StartState, ExFunc) ->
 -include_lib("eunit/include/eunit.hrl").
 
 -record(my_state, {val_1, val_2}).
+
+good_config_values_test() ->
+	LFunc = lookup_func_for(my_app, dict:from_list([{val3, "ok"}])),
+	KeySpecs = [{val3, fun(S,V) -> S#my_state{val_1 = V} end}],
+	ConfigResults = require_values(my_app, KeySpecs, #my_state{}, LFunc),
+	?assertMatch(#my_state{val_1 = "ok"}, ConfigResults).
+
+existing_value_bad_func_test() ->
+	LFunc = lookup_func_for(my_app, dict:from_list([{val3, "ok"}])),
+	KeySpecs = [{val3, fun(_,_) -> throw({'EXIT', ok}) end}],
+	ConfigResults = require_values(my_app, KeySpecs, #my_state{}, LFunc),
+        {error, ErrorKeys} = ConfigResults,
+	?assertMatch([{config_func_failed, _}],ErrorKeys),
+	?assertEqual(erlang:length(ErrorKeys), 1).
+
 
 missing_value_test() ->
 	LFunc = lookup_func_for(my_app, dict:from_list([{val3, "ok"}])),

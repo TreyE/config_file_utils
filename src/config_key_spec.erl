@@ -22,4 +22,4 @@ is_optional({optional, _}) -> true;
 is_optional(_) -> false.
 
 is_required({required, _}) -> true;
-is_required(false) -> false.
+is_required(_) -> false.

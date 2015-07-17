@@ -1,20 +1,31 @@
 -module(config_file_utils).
 
--export([require_values/3]).
+-export([require_values/3, optional_values/3, extract_config/3]).
+
+optional_config_value(App, {Key, ProcFunc, Default}, ExFunc) ->
+	case ExFunc(App, Key) of 
+          {ok, Val} -> {ok, ProcFunc, Val}; 
+	  undefined -> {ok, ProcFunc, Default}
+        end.
 
 required_config_value(App, {Key, ProcFunc}, ExFunc) -> 
 	case ExFunc(App, Key) of
           {ok, Val} -> {ok, ProcFunc, Val}; 
-	  undefined -> {error, {missing_config_value, App, Key}}
+	  undefined -> {error, [{missing_config_value, App, Key}]}
 	end.
 
-extract_value_fun(App, ExFunc) ->
+extract_req_value_fun(App, ExFunc) ->
     fun(KeySpec) ->
       required_config_value(App, KeySpec, ExFunc) 
     end.
 
-collect_required_values({error, A},{error, EL}) -> {error, [A|EL]};
-collect_required_values({error, A},_) -> {error, [A]};
+extract_opt_value_fun(App, ExFunc) ->
+    fun(KeySpec) ->
+      optional_config_value(App, KeySpec, ExFunc) 
+    end.
+
+collect_required_values({error, A},{error, EL}) -> {error, A ++ EL};
+collect_required_values({error, A},_) -> {error, A};
 collect_required_values(_, {error, EL}) -> {error, EL};
 collect_required_values({ok, PFunc, Val}, State) -> 
 	case catch(PFunc(State, Val)) of
@@ -23,12 +34,29 @@ collect_required_values({ok, PFunc, Val}, State) ->
           A -> A		
         end.
 
+optional_values(App, KeySpecs, StartState, ExFunc) ->
+	ConfigVals = lists:map(extract_opt_value_fun(App, ExFunc), KeySpecs),
+	lists:foldl(fun collect_required_values/2, StartState, ConfigVals).
+
+optional_values(App, KeySpecs, StartState) ->
+  optional_values(App, KeySpecs, StartState, fun application:get_env/2).
+
 require_values(App, KeySpecs, StartState) ->
   require_values(App, KeySpecs, StartState, fun application:get_env/2).
 
 require_values(App, KeySpecs, StartState, ExFunc) ->
-	ConfigVals = lists:map(extract_value_fun(App, ExFunc), KeySpecs),
+	ConfigVals = lists:map(extract_req_value_fun(App, ExFunc), KeySpecs),
 	lists:foldl(fun collect_required_values/2, StartState, ConfigVals).
+
+extract_config(App, Specs, StartState) ->
+	RSpecs = config_key_spec:requireds(Specs),
+	OSpecs = config_key_spec:optionals(Specs),
+	extract_configuration_with_specs(App, RSpecs, OSpecs, StartState).
+
+extract_configuration_with_specs(App, ReqKeySpecs, OptKeySpecs, StartState) ->
+        optional_values(App, OptKeySpecs,
+  	  require_values(App, ReqKeySpecs, StartState)
+	).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

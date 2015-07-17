@@ -3,7 +3,8 @@
   {description, "An Erlang config_file_utils library"},
   {vsn, "1"},
   {modules, [
-             config_file_utils
+             config_file_utils,
+             config_key_spec
             ]},
   {registered, []},
   {applications, [
